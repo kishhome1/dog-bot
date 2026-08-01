@@ -40,7 +40,8 @@ def init_db():
                 user_id INTEGER NOT NULL,
                 user_name TEXT NOT NULL,
                 timestamp TEXT NOT NULL,
-                note TEXT
+                note TEXT,
+                together INTEGER NOT NULL DEFAULT 0
             )
         """)
         conn.execute("""
@@ -54,6 +55,19 @@ def init_db():
         # Миграция: добавляем колонки породы и возраста, если их ещё нет
         # (например, база была создана более ранней версией бота).
         for column, coltype in [("breed", "TEXT"), ("age_years", "REAL")]:
+            try:
+                conn.execute(f"ALTER TABLE chat_settings ADD COLUMN {column} {coltype}")
+            except sqlite3.OperationalError:
+                pass  # колонка уже существует — всё в порядке
+
+        # Миграция: отметка "выгуляли вместе" для уже существующих баз.
+        try:
+            conn.execute("ALTER TABLE walks ADD COLUMN together INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # колонка уже существует — всё в порядке
+
+        # Миграция: геолокация чата для погодных предупреждений.
+        for column, coltype in [("city", "TEXT"), ("latitude", "REAL"), ("longitude", "REAL")]:
             try:
                 conn.execute(f"ALTER TABLE chat_settings ADD COLUMN {column} {coltype}")
             except sqlite3.OperationalError:
@@ -111,12 +125,22 @@ def set_pet_name(chat_id: int, name: str):
         )
 
 
-def add_walk(chat_id: int, user_id: int, user_name: str, note: str = None) -> int:
-    """Записывает новую прогулку, возвращает её id (нужен чтобы потом прикрепить заметку)."""
+def set_location(chat_id: int, city: str, latitude: float, longitude: float):
+    """Сохраняет координаты чата — нужны для погодных предупреждений перед прогулкой."""
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE chat_settings SET city = ?, latitude = ?, longitude = ? WHERE chat_id = ?",
+            (city, latitude, longitude, chat_id),
+        )
+
+
+def add_walk(chat_id: int, user_id: int, user_name: str, note: str = None, together: bool = False) -> int:
+    """Записывает новую прогулку, возвращает её id (нужен чтобы потом прикрепить заметку).
+    together=True — отметили, что гуляли вместе (кнопка "Выгуляли вместе")."""
     with get_connection() as conn:
         cur = conn.execute(
-            "INSERT INTO walks (chat_id, user_id, user_name, timestamp, note) VALUES (?, ?, ?, ?, ?)",
-            (chat_id, user_id, user_name, datetime.now().isoformat(), note),
+            "INSERT INTO walks (chat_id, user_id, user_name, timestamp, note, together) VALUES (?, ?, ?, ?, ?, ?)",
+            (chat_id, user_id, user_name, datetime.now().isoformat(), note, int(together)),
         )
         return cur.lastrowid
 
@@ -160,6 +184,6 @@ def get_stats(chat_id: int, since: datetime):
 def get_all_walks_for_export(chat_id: int):
     with get_connection() as conn:
         return conn.execute(
-            "SELECT timestamp, user_name, note FROM walks WHERE chat_id = ? ORDER BY timestamp",
+            "SELECT timestamp, user_name, note, together FROM walks WHERE chat_id = ? ORDER BY timestamp",
             (chat_id,),
         ).fetchall()
