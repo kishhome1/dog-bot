@@ -166,18 +166,13 @@ def get_history(chat_id: int, limit: int = 10):
         ).fetchall()
 
 
-def get_stats(chat_id: int, since: datetime):
-    """Список (user_name, cnt) за период с указанной даты, отсортированный по убыванию."""
+def get_walks_by_weekday(chat_id: int):
+    """Возвращает (timestamp, user_name) по всем прогулкам чата — используется
+    для построения графика активности по дням недели в /stats."""
     with get_connection() as conn:
         return conn.execute(
-            """
-            SELECT user_name, COUNT(*) as cnt
-            FROM walks
-            WHERE chat_id = ? AND timestamp >= ?
-            GROUP BY user_name
-            ORDER BY cnt DESC
-            """,
-            (chat_id, since.isoformat()),
+            "SELECT timestamp, user_name FROM walks WHERE chat_id = ? ORDER BY timestamp",
+            (chat_id,),
         ).fetchall()
 
 

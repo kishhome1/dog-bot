@@ -24,7 +24,7 @@ There is no test suite, linter, or build step in this repo.
 ## Architecture
 
 - `bot.py` — all Telegram handlers, scheduling logic, and the `main()` entry point.
-- `database.py` — all SQLite access, wrapped behind plain functions (`add_walk`, `get_stats`, `set_interval`, etc.). `bot.py` never touches `sqlite3` directly; it always goes through `db.*`. Uses a single `dog_walks.db` file (path hardcoded as `DB_PATH`), opened/closed per call via the `get_connection()` context manager (commit-on-success, no persistent connection).
+- `database.py` — all SQLite access, wrapped behind plain functions (`add_walk`, `get_walks_by_weekday`, `set_interval`, etc.). `bot.py` never touches `sqlite3` directly; it always goes through `db.*`. Uses a single `dog_walks.db` file (path hardcoded as `DB_PATH`), opened/closed per call via the `get_connection()` context manager (commit-on-success, no persistent connection).
 
 ### Reminder scheduling model
 

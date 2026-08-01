@@ -23,9 +23,14 @@ import csv
 import io
 import re
 import os
+from collections import defaultdict
 from datetime import datetime, timedelta
 
 import httpx
+import matplotlib
+matplotlib.use("Agg")  # без GUI — бот рендерит графики на сервере без дисплея
+import matplotlib.pyplot as plt
+
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -65,6 +70,8 @@ SMALL_BREED_KEYWORDS = [
 # Коды погоды Open-Meteo (стандарт WMO), которые означают дождь или грозу.
 # https://open-meteo.com/en/docs — таблица WMO Weather interpretation codes
 RAIN_WEATHER_CODES = {51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99}
+
+WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
 
 # ---------- Вспомогательные функции ----------
@@ -281,7 +288,7 @@ async def ask_next_walk(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"— это стартовый ориентир по возрасту и породе, а не ветеринарная норма.\n"
         f"Изменить в любой момент: /setinterval <часы>\n\n"
         f"Команды:\n"
-        f"/stats — статистика за сегодня и неделю\n"
+        f"/stats — график активности по дням недели\n"
         f"/history — последние прогулки\n"
         f"/export — история в CSV\n"
         f"/setpet <имя> — быстро сменить кличку\n"
@@ -413,43 +420,59 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- Статистика и история ----------
 
+def build_weekday_activity_chart(walks) -> io.BytesIO:
+    """Строит столбчатую диаграмму: сколько раз каждый гулял в каждый день недели.
+    walks — строки (timestamp, user_name) из db.get_walks_by_weekday()."""
+    counts = defaultdict(lambda: [0] * 7)
+    for w in walks:
+        weekday = datetime.fromisoformat(w["timestamp"]).weekday()  # 0=Пн ... 6=Вс
+        counts[w["user_name"]][weekday] += 1
+
+    users = sorted(counts.keys())
+    x = list(range(7))
+    bar_width = 0.8 / len(users)
+
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    for i, user in enumerate(users):
+        offset = (i - (len(users) - 1) / 2) * bar_width
+        positions = [xi + offset for xi in x]
+        ax.bar(positions, counts[user], bar_width, label=user)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(WEEKDAY_LABELS)
+    ax.set_ylabel("Прогулок")
+    ax.set_title("Активность по дням недели")
+    ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
+    ax.legend()
+    ax.grid(axis="y", alpha=0.3)
+    fig.tight_layout()
+
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=150)
+    plt.close(fig)
+    buffer.seek(0)
+    return buffer
+
+
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    now = datetime.now()
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start = now - timedelta(days=7)
+    walks = db.get_walks_by_weekday(chat_id)
 
-    today_stats = db.get_stats(chat_id, today_start)
-    week_stats = db.get_stats(chat_id, week_start)
+    if not walks:
+        await update.message.reply_text("Пока нет данных для статистики — ни одной прогулки не записано.")
+        return
 
-    lines = ["📊 Статистика прогулок", ""]
+    chart = build_weekday_activity_chart(walks)
 
-    lines.append("Сегодня:")
-    if today_stats:
-        for row in today_stats:
-            lines.append(f"  {row['user_name']}: {row['cnt']}")
-    else:
-        lines.append("  Пока никто не выгуливал")
-
-    lines.append("")
-    lines.append("За 7 дней:")
-    if week_stats:
-        medals = ["🥇", "🥈", "🥉"]
-        for i, row in enumerate(week_stats):
-            medal = medals[i] if i < len(medals) else "▫️"
-            lines.append(f"  {medal} {row['user_name']}: {row['cnt']}")
-    else:
-        lines.append("  Данных пока нет")
-
+    caption = "📊 Активность по дням недели"
     last_walk = db.get_last_walk(chat_id)
     if last_walk:
-        lines.append("")
-        lines.append(
-            f"🕐 Последняя прогулка: {format_walk_time(last_walk['timestamp'])} "
+        caption += (
+            f"\n🕐 Последняя прогулка: {format_walk_time(last_walk['timestamp'])} "
             f"({last_walk['user_name']})"
         )
 
-    await update.message.reply_text("\n".join(lines))
+    await update.message.reply_photo(photo=chart, caption=caption)
 
 
 async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -556,7 +579,7 @@ async def setlocation_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "/start — пройти (или перепройти) настройку профиля питомца\n"
-        "/stats — статистика за сегодня и неделю\n"
+        "/stats — график активности по дням недели\n"
         "/history — последние 10 прогулок\n"
         "/setinterval <часы> — изменить интервал напоминаний вручную\n"
         "/setpet <имя> — быстро сменить кличку\n"
