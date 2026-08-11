@@ -131,7 +131,7 @@ html, body {
 
 /* ---------- Пустые состояния ---------- */
 
-.empty-state { text-align: center; padding: 32px; max-width: 320px; }
+.empty-state { text-align: center; padding: 32px; max-width: 320px; margin: 0 auto; }
 .empty-state-icon { font-size: 40px; margin-bottom: 12px; }
 .empty-state-title { font-size: 17px; font-weight: 600; margin: 0 0 6px; }
 .empty-state-text { font-size: 14px; color: var(--color-text-secondary); margin: 0; }

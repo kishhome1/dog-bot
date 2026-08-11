@@ -47,9 +47,9 @@ function renderStats(data) {
           <div>${escapeHtml(r.display_name)}</div>
         </div>
         <div class="rewards-grid">
-          <div class="reward-tile badge-gold"><div class="reward-tile-count">${r.gold}</div><div class="reward-tile-label">золото</div></div>
-          <div class="reward-tile badge-silver"><div class="reward-tile-count">${r.silver}</div><div class="reward-tile-label">серебро</div></div>
-          <div class="reward-tile badge-bronze"><div class="reward-tile-count">${r.bronze}</div><div class="reward-tile-label">бронза</div></div>
+          <div class="reward-tile badge-bronze"><div class="reward-tile-count">${r.bronze}</div><div class="reward-tile-label">Бронза</div></div>
+          <div class="reward-tile badge-silver"><div class="reward-tile-count">${r.silver}</div><div class="reward-tile-label">Серебро</div></div>
+          <div class="reward-tile badge-gold"><div class="reward-tile-count">${r.gold}</div><div class="reward-tile-label">Золото</div></div>
         </div>
       </div>
     `

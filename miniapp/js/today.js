@@ -54,10 +54,15 @@ function renderMoodCard(walks) {
   const hoursSince = (Date.now() - new Date(lastWalk.walked_at).getTime()) / 3600000;
   const recentlyWalked = hoursSince < threshold;
 
+  const isMale = state.petSex === "male";
+  const moodTitle = recentlyWalked
+    ? `${state.petName} ${isMale ? "бодр" : "бодра"}`
+    : `${state.petName} ${isMale ? "заждался" : "заждалась"}`;
+
   card.innerHTML = `
     <div class="mood-avatar">🐾</div>
     <div>
-      <div class="mood-text-title">${recentlyWalked ? `${state.petName} бодра` : `${state.petName} заждалась`}</div>
+      <div class="mood-text-title">${moodTitle}</div>
       <div class="mood-text-subtitle">${
         recentlyWalked ? "Гуляли недавно" : `Не гуляли ${Math.floor(hoursSince)} ч.`
       }</div>

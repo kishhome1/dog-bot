@@ -3,6 +3,7 @@
 export const state = {
   familyId: null,
   petName: null,
+  petSex: null, // 'male' | 'female' — для согласования рода в текстах
   reminderMode: null,
   intervalHours: null,
   members: [], // [{id, tg_user_id, display_name}] — приходит из /api/auth при входе

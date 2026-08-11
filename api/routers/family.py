@@ -32,6 +32,7 @@ def auth(user: dict = Depends(get_telegram_user)):
         needs_onboarding=False,
         family_id=member["family_id"],
         pet_name=family["pet_name"],
+        pet_sex=family["pet_sex"],
         reminder_mode=family["reminder_mode"],
         interval_hours=family["interval_hours"],
         members=members,
@@ -51,6 +52,7 @@ def create_family(payload: CreateFamilyRequest, user: dict = Depends(get_telegra
         tg_user_id=user["tg_user_id"],
         display_name=user["display_name"],
         timezone=payload.timezone,
+        pet_sex=payload.pet_sex,
     )
     invite_url = f"https://t.me/{BOT_USERNAME}?start=invite_{result['invite_code']}"
     return CreateFamilyResponse(invite_url=invite_url, **result)

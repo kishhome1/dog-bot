@@ -88,6 +88,9 @@ def init_db():
         # Не было в исходной схеме ТЗ, поэтому добавляется отдельной колонкой,
         # как и breed/age_years в старой SQLite-версии этого проекта.
         cur.execute("ALTER TABLE families ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC'")
+        # 'male' | 'female' — для согласования рода в текстах Mini App (например,
+        # карточка настроения: "бодра/заждалась" для суки, "бодр/заждался" для кобеля).
+        cur.execute("ALTER TABLE families ADD COLUMN IF NOT EXISTS pet_sex TEXT NOT NULL DEFAULT 'female'")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS family_members (
                 id SERIAL PRIMARY KEY,
@@ -146,6 +149,7 @@ def create_family(
     tg_user_id: int,
     display_name: str,
     timezone: str = "UTC",
+    pet_sex: str = "female",
 ) -> dict:
     """Создаёт семью, времена напоминаний (для 'fixed') и первого участника — одной транзакцией.
     Возвращает {family_id, invite_code}. tg_chat_id участника = tg_user_id: Mini App открывается
@@ -159,9 +163,9 @@ def create_family(
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            """INSERT INTO families (pet_name, invite_code, reminder_mode, interval_hours, timezone)
-               VALUES (%s, %s, %s, %s, %s) RETURNING id, invite_code""",
-            (pet_name, invite_code, reminder_mode, interval_hours, timezone),
+            """INSERT INTO families (pet_name, invite_code, reminder_mode, interval_hours, timezone, pet_sex)
+               VALUES (%s, %s, %s, %s, %s, %s) RETURNING id, invite_code""",
+            (pet_name, invite_code, reminder_mode, interval_hours, timezone, pet_sex),
         )
         family = cur.fetchone()
         family_id = family["id"]

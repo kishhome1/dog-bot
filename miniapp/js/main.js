@@ -47,6 +47,7 @@ async function enterMainApp() {
   const auth = await api.auth();
   state.familyId = auth.family_id;
   state.petName = auth.pet_name;
+  state.petSex = auth.pet_sex;
   state.reminderMode = auth.reminder_mode;
   state.intervalHours = auth.interval_hours;
   state.members = auth.members;

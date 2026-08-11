@@ -21,6 +21,7 @@ class AuthResponse(BaseModel):
     needs_onboarding: bool
     family_id: Optional[int] = None
     pet_name: Optional[str] = None
+    pet_sex: Optional[Literal["male", "female"]] = None
     reminder_mode: Optional[Literal["fixed", "interval"]] = None
     interval_hours: Optional[float] = None
     members: List[FamilyMemberOut] = []
@@ -28,6 +29,7 @@ class AuthResponse(BaseModel):
 
 class CreateFamilyRequest(BaseModel):
     pet_name: str
+    pet_sex: Literal["male", "female"] = "female"
     reminder_mode: Literal["fixed", "interval"]
     interval_hours: Optional[float] = None
     times: Optional[List[time]] = None

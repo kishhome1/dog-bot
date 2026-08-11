@@ -5,6 +5,7 @@ import { api } from "./api.js";
 
 const steps = ["name", "mode", "params", "invite"];
 let petName = "";
+let petSex = "female";
 let mode = "fixed";
 let times = ["07:00", "19:00"];
 let inviteUrl = "";
@@ -55,10 +56,14 @@ function renderTimeList() {
 
 function resetOnboarding() {
   petName = "";
+  petSex = "female";
   mode = "fixed";
   times = ["07:00", "19:00"];
   document.getElementById("input-pet-name").value = "";
   document.getElementById("btn-step-name-next").disabled = true;
+  document.querySelectorAll("#pet-sex-switch .segmented-item").forEach((b) => {
+    b.classList.toggle("active", b.dataset.sex === petSex);
+  });
   document.querySelectorAll(".mode-card").forEach((c) => c.classList.remove("selected"));
   document.getElementById("input-interval-hours").value = "8";
   renderTimeList();
@@ -94,6 +99,13 @@ export function initOnboarding() {
     showStep("mode");
   });
 
+  document.querySelectorAll("#pet-sex-switch .segmented-item").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      petSex = btn.dataset.sex;
+      document.querySelectorAll("#pet-sex-switch .segmented-item").forEach((b) => b.classList.toggle("active", b === btn));
+    });
+  });
+
   document.querySelectorAll(".mode-card").forEach((card) => {
     card.addEventListener("click", () => {
       mode = card.dataset.mode;
@@ -113,7 +125,7 @@ export function initOnboarding() {
     const btn = document.getElementById("btn-step-params-next");
     btn.disabled = true;
     try {
-      const payload = { pet_name: petName, reminder_mode: mode, timezone: detectTimezone() };
+      const payload = { pet_name: petName, pet_sex: petSex, reminder_mode: mode, timezone: detectTimezone() };
       if (mode === "fixed") {
         payload.times = times;
       } else {

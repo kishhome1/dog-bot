@@ -39,6 +39,8 @@ This is the part that's easy to get wrong, because it spans two processes that d
 
 No `ConversationHandler` in the bot anymore — onboarding is entirely in the Mini App (`miniapp/js/onboarding.js`) calling `POST /api/family` (create) or `POST /api/family/join` (second member, via `/start invite_<code>` deep link → bot passes the code through in the WebApp button URL → Mini App auto-joins on load, skipping the onboarding steps). `compute_interval()`/breed/age heuristics from the old bot are gone entirely — `interval_hours` is now a direct user input.
 
+`families.pet_sex` (`'male' | 'female'`, defaults to `'female'`) is collected as a segmented toggle on onboarding step 1, next to the name field — it exists purely for Russian grammatical agreement (e.g. the Today mood card picks "бодр"/"заждался" vs "бодра"/"заждалась" off `state.petSex` in `today.js`), not a product feature in its own right. Any new user-facing text that needs to agree in gender with the pet should read `state.petSex` client-side rather than hardcoding one form.
+
 ## Language
 
 All user-facing strings, comments, and docstrings in this codebase are in Russian. Match that when adding to `bot.py`/`database.py`/`api/*`/`miniapp/*`/`README.md` unless told otherwise.
