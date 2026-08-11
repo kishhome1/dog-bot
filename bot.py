@@ -146,12 +146,27 @@ async def send_interval_reminder(context: ContextTypes.DEFAULT_TYPE):
 
 
 def schedule_interval_reminder(context: ContextTypes.DEFAULT_TYPE, family: dict):
+    """Вызывается на каждом тике reconcile_reminders (раз в 5 минут) для каждой
+    interval-семьи. Если прогулку уже просрочили (delay <= 0), НЕЛЬЗЯ просто
+    планировать job на "почти сейчас" безусловно — иначе на следующем тике
+    reconcile снова увидит ту же просрочку и заново пошлёт напоминание, и так
+    каждые 5 минут, пока прогулку не отметят (это и был баг: спам раз в 5 минут
+    вместо одного напоминания + одного nudge через час).
+
+    Раз в 5 минут просто перепланировать нечего — used как признак "уже
+    отправляли и ждём час" служит сам nudge_interval_{family_id}: пока он
+    существует (ещё не прошёл час), новых напоминаний не шлём вообще."""
     family_id = family["id"]
     last_walk = db.get_last_walk(family_id)
     interval_hours = family["interval_hours"] or DEFAULT_INTERVAL_HOURS
     base_time = last_walk["walked_at"] if last_walk else family["created_at"]
     target = base_time + timedelta(hours=interval_hours)
     delay = (target - datetime.now(timezone.utc)).total_seconds()
+
+    if delay <= 0:
+        if context.job_queue.get_jobs_by_name(f"nudge_interval_{family_id}"):
+            return
+        delay = 1
 
     schedule_once(context, send_interval_reminder, delay, f"reminder_interval_{family_id}", family_id)
 
