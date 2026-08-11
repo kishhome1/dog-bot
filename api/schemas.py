@@ -24,20 +24,18 @@ class AuthResponse(BaseModel):
     pet_sex: Optional[Literal["male", "female"]] = None
     reminder_mode: Optional[Literal["fixed", "interval"]] = None
     interval_hours: Optional[float] = None
+    reminder_times: List[time] = []
+    invite_url: Optional[str] = None
     members: List[FamilyMemberOut] = []
 
 
-class CreateFamilyRequest(BaseModel):
-    pet_name: str
-    pet_sex: Literal["male", "female"] = "female"
+class ReminderConfigBase(BaseModel):
+    """Общие поля/валидация режима напоминаний — переиспользуются и при создании
+    семьи (онбординг), и при редактировании настроек напоминаний (вкладка «Настройки»)."""
+
     reminder_mode: Literal["fixed", "interval"]
     interval_hours: Optional[float] = None
     times: Optional[List[time]] = None
-    # IANA-имя (напр. 'Europe/Moscow') — фронт берёт его автоматически через
-    # Intl.DateTimeFormat().resolvedOptions().timeZone, без отдельного шага
-    # онбординга. Нужно, чтобы 'fixed'-напоминания шли по локальному времени
-    # семьи, а не по UTC.
-    timezone: str = "UTC"
 
     @model_validator(mode="after")
     def check_mode_params(self):
@@ -50,6 +48,20 @@ class CreateFamilyRequest(BaseModel):
             raise ValueError("Для режима 'fixed' нужно хотя бы одно время")
         if self.reminder_mode == "interval" and not self.interval_hours:
             raise ValueError("Для режима 'interval' нужно указать interval_hours")
+        return self
+
+
+class CreateFamilyRequest(ReminderConfigBase):
+    pet_name: str
+    pet_sex: Literal["male", "female"] = "female"
+    # IANA-имя (напр. 'Europe/Moscow') — фронт берёт его автоматически через
+    # Intl.DateTimeFormat().resolvedOptions().timeZone, без отдельного шага
+    # онбординга. Нужно, чтобы 'fixed'-напоминания шли по локальному времени
+    # семьи, а не по UTC.
+    timezone: str = "UTC"
+
+    @model_validator(mode="after")
+    def check_timezone(self):
         if self.timezone not in _KNOWN_TIMEZONES:
             raise ValueError(f"Неизвестная таймзона: {self.timezone}")
         return self
@@ -59,6 +71,17 @@ class CreateFamilyResponse(BaseModel):
     family_id: int
     invite_code: str
     invite_url: str
+
+
+class UpdateRemindersRequest(ReminderConfigBase):
+    """Вкладка «Настройки» → блок «Напоминания». Таймзону тут не трогаем — она
+    определяется один раз при создании семьи, для смены сценария нет (устройство
+    то же самое)."""
+
+
+class UpdateProfileRequest(BaseModel):
+    pet_name: Optional[str] = None
+    pet_sex: Optional[Literal["male", "female"]] = None
 
 
 class JoinFamilyRequest(BaseModel):

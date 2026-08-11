@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 import database as db
-from api.routers import family, stats, treatments, walks
+from api.routers import export, family, stats, treatments, walks
 
 MINIAPP_DIR = Path(__file__).resolve().parent.parent / "miniapp"
 
@@ -31,5 +31,6 @@ app.include_router(family.router)
 app.include_router(walks.router)
 app.include_router(treatments.router)
 app.include_router(stats.router)
+app.include_router(export.router)
 
 app.mount("/", StaticFiles(directory=MINIAPP_DIR, html=True), name="miniapp")

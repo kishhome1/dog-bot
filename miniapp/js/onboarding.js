@@ -2,13 +2,15 @@
 // участника по инвайт-коду обходит эти шаги полностью — см. tryAutoJoin().
 
 import { api } from "./api.js";
+import { createTimeListEditor } from "./time-list.js";
 
 const steps = ["name", "mode", "params", "invite"];
 let petName = "";
 let petSex = "female";
 let mode = "fixed";
-let times = ["07:00", "19:00"];
 let inviteUrl = "";
+
+const timeListEditor = createTimeListEditor("time-list", "btn-add-time", ["07:00", "19:00"]);
 
 function showStep(id) {
   for (const s of steps) {
@@ -27,46 +29,18 @@ function detectTimezone() {
   }
 }
 
-function renderTimeList() {
-  const list = document.getElementById("time-list");
-  list.innerHTML = "";
-  times.forEach((t, idx) => {
-    const row = document.createElement("div");
-    row.className = "time-row";
-    row.innerHTML = `
-      <input type="time" value="${t}" data-idx="${idx}" />
-      <button class="remove-time" data-idx="${idx}" ${times.length <= 1 ? "disabled" : ""}>✕</button>
-    `;
-    list.appendChild(row);
-  });
-
-  list.querySelectorAll('input[type="time"]').forEach((input) => {
-    input.addEventListener("change", (e) => {
-      times[Number(e.target.dataset.idx)] = e.target.value;
-    });
-  });
-  list.querySelectorAll(".remove-time").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      if (times.length <= 1) return;
-      times.splice(Number(e.target.dataset.idx), 1);
-      renderTimeList();
-    });
-  });
-}
-
 function resetOnboarding() {
   petName = "";
   petSex = "female";
   mode = "fixed";
-  times = ["07:00", "19:00"];
   document.getElementById("input-pet-name").value = "";
   document.getElementById("btn-step-name-next").disabled = true;
   document.querySelectorAll("#pet-sex-switch .segmented-item").forEach((b) => {
     b.classList.toggle("active", b.dataset.sex === petSex);
   });
-  document.querySelectorAll(".mode-card").forEach((c) => c.classList.remove("selected"));
+  document.querySelectorAll("#step-mode .mode-card").forEach((c) => c.classList.remove("selected"));
   document.getElementById("input-interval-hours").value = "8";
-  renderTimeList();
+  timeListEditor.setTimes(["07:00", "19:00"]);
   showStep("name");
 }
 
@@ -85,7 +59,7 @@ function applyModeToParamsStep() {
     mode === "fixed" ? "Времена напоминаний" : "Через сколько часов";
   document.getElementById("params-fixed").classList.toggle("hidden", mode !== "fixed");
   document.getElementById("params-interval").classList.toggle("hidden", mode !== "interval");
-  renderTimeList();
+  timeListEditor.render();
 }
 
 export function initOnboarding() {
@@ -106,19 +80,14 @@ export function initOnboarding() {
     });
   });
 
-  document.querySelectorAll(".mode-card").forEach((card) => {
+  document.querySelectorAll("#step-mode .mode-card").forEach((card) => {
     card.addEventListener("click", () => {
       mode = card.dataset.mode;
-      document.querySelectorAll(".mode-card").forEach((c) => c.classList.remove("selected"));
+      document.querySelectorAll("#step-mode .mode-card").forEach((c) => c.classList.remove("selected"));
       card.classList.add("selected");
       applyModeToParamsStep();
       showStep("params");
     });
-  });
-
-  document.getElementById("btn-add-time").addEventListener("click", () => {
-    times.push("12:00");
-    renderTimeList();
   });
 
   document.getElementById("btn-step-params-next").addEventListener("click", async () => {
@@ -127,7 +96,7 @@ export function initOnboarding() {
     try {
       const payload = { pet_name: petName, pet_sex: petSex, reminder_mode: mode, timezone: detectTimezone() };
       if (mode === "fixed") {
-        payload.times = times;
+        payload.times = timeListEditor.getTimes();
       } else {
         payload.interval_hours = Number(document.getElementById("input-interval-hours").value) || 8;
       }

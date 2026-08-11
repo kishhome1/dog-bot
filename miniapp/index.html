@@ -129,6 +129,58 @@
   </div>
 </div>
 
+<!-- ---------- Экран «Настройки» ---------- -->
+<div id="screen-settings" class="screen hidden">
+  <div class="app-content">
+
+    <div class="settings-section">
+      <div class="settings-section-title">Профиль собаки</div>
+      <input id="settings-pet-name" class="input" type="text" maxlength="40" />
+      <div class="segmented" id="settings-pet-sex-switch">
+        <button type="button" class="segmented-item" data-sex="male">Мальчик</button>
+        <button type="button" class="segmented-item" data-sex="female">Девочка</button>
+      </div>
+      <button id="btn-save-profile" class="btn btn-secondary btn-block">Сохранить</button>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Напоминания</div>
+      <div id="settings-mode-switch">
+        <div class="mode-card" data-mode="fixed">
+          <div class="mode-card-title">По фиксированному времени</div>
+        </div>
+        <div class="mode-card" data-mode="interval">
+          <div class="mode-card-title">Через N часов от последней прогулки</div>
+        </div>
+      </div>
+      <div id="settings-params-fixed">
+        <div id="settings-time-list" class="time-list"></div>
+        <button id="settings-btn-add-time" class="btn btn-secondary btn-block">+ Добавить время</button>
+      </div>
+      <div id="settings-params-interval" class="hidden">
+        <input id="settings-input-interval-hours" class="input" type="number" min="1" max="48" step="0.5" />
+      </div>
+      <button id="btn-save-reminders" class="btn btn-secondary btn-block">Сохранить</button>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Семья</div>
+      <div class="invite-link-box">
+        <span id="settings-invite-link-text"></span>
+      </div>
+      <button id="settings-btn-share-invite" class="btn btn-secondary btn-block">Поделиться ссылкой</button>
+      <div id="settings-members-list" class="settings-members-list"></div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Экспорт истории</div>
+      <button id="btn-export-walks" class="btn btn-secondary btn-block">Скачать историю прогулок (CSV)</button>
+      <button id="btn-export-treatments" class="btn btn-secondary btn-block">Скачать историю обработок (CSV)</button>
+    </div>
+
+  </div>
+</div>
+
 <!-- ---------- Нижняя навигация ---------- -->
 <div id="bottom-nav" class="bottom-nav hidden">
   <button class="nav-item active" data-screen="today">
@@ -139,6 +191,9 @@
   </button>
   <button class="nav-item" data-screen="stats">
     <span class="nav-icon">📊</span><span>Статистика</span>
+  </button>
+  <button class="nav-item" data-screen="settings">
+    <span class="nav-icon">⚙️</span><span>Настройки</span>
   </button>
 </div>
 

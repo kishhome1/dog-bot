@@ -30,10 +30,23 @@ async function request(method, path, body) {
   return res.json();
 }
 
+async function requestBlob(path) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { Authorization: `tma ${currentInitData()}` },
+  });
+  if (!res.ok) throw new Error(`${res.status}: не удалось скачать файл`);
+  return res.blob();
+}
+
 export const api = {
   auth: () => request("POST", "/auth"),
   createFamily: (payload) => request("POST", "/family", payload),
   joinFamily: (inviteCode) => request("POST", "/family/join", { invite_code: inviteCode }),
+  updateProfile: (payload) => request("PATCH", "/family", payload),
+  updateReminders: (payload) => request("PATCH", "/family/reminders", payload),
+
+  exportWalksCsv: () => requestBlob("/export/walks"),
+  exportTreatmentsCsv: () => requestBlob("/export/treatments"),
 
   getWalks: (params = {}) => {
     const qs = new URLSearchParams(params).toString();

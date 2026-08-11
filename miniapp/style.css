@@ -338,6 +338,18 @@ html, body {
 .reward-tile-count { font-size: 18px; font-weight: 700; }
 .reward-tile-label { font-size: 11px; }
 
+/* ---------- Настройки ---------- */
+
+.settings-section { margin-bottom: 28px; }
+.settings-section-title { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+
+.settings-members-list { margin-top: 12px; }
+.settings-member-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0;
+}
+.settings-member-name { font-size: 14px; }
+
 /* ---------- Нижняя навигация ---------- */
 
 .bottom-nav {

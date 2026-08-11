@@ -7,9 +7,10 @@ import { initOnboarding, showOnboarding, handleOnboardingEntry } from "./onboard
 import { initToday, loadToday, closeWalkSheet } from "./today.js";
 import { initMedicine, loadMedicine, closeTreatmentForm } from "./medicine.js";
 import { initStats, loadStats } from "./stats.js";
+import { initSettings, loadSettings } from "./settings.js";
 
-const MAIN_SCREENS = ["today", "walk-history", "medicine", "treatment-history", "stats"];
-const NAV_SCREENS = ["today", "medicine", "stats"];
+const MAIN_SCREENS = ["today", "walk-history", "medicine", "treatment-history", "stats", "settings"];
+const NAV_SCREENS = ["today", "medicine", "stats", "settings"];
 const ALL_SCREENS = ["loading", "outside-telegram", "onboarding", ...MAIN_SCREENS];
 
 function showScreen(name) {
@@ -32,6 +33,7 @@ function wireBottomNav() {
       if (target === "today") loadToday();
       if (target === "medicine") loadMedicine();
       if (target === "stats") loadStats();
+      if (target === "settings") loadSettings();
     });
   });
 }
@@ -74,6 +76,7 @@ async function boot() {
   initToday();
   initMedicine();
   initStats();
+  initSettings();
 
   window.addEventListener("onboarding-complete", () => {
     enterMainApp().catch((e) => {

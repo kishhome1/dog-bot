@@ -208,6 +208,19 @@ def get_all_families():
         return cur.fetchall()
 
 
+def update_family_profile(family_id: int, fields: dict):
+    """fields — словарь только тех колонок, которые нужно поменять (pet_name/pet_sex).
+    Используется настройками профиля — правки после онбординга."""
+    if not fields:
+        return
+    columns = list(fields.keys())
+    set_clause = ", ".join(f"{col} = %s" for col in columns)
+    values = [fields[col] for col in columns]
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"UPDATE families SET {set_clause} WHERE id = %s", (*values, family_id))
+
+
 def set_reminder_config(family_id: int, reminder_mode: str, interval_hours: float, times: list):
     """Обновляет режим напоминаний семьи и (для 'fixed') полностью пересобирает reminder_times."""
     with get_connection() as conn:
@@ -396,6 +409,17 @@ def get_treatment_history(family_id: int, category: str, custom_name: str = None
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(query, params)
+        return cur.fetchall()
+
+
+def get_all_treatments(family_id: int):
+    """Вся история обработок семьи, вне зависимости от категории — для CSV-экспорта."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM treatments WHERE family_id = %s ORDER BY treated_on DESC",
+            (family_id,),
+        )
         return cur.fetchall()
 
 
