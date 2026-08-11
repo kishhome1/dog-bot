@@ -3,19 +3,50 @@
 
 const API_BASE = "/api";
 
+// Временное диагностическое логирование запросов (см. CLAUDE.md, раздел про
+// производительность Mini App) — показывает в консоли, сколько запросов
+// уходит при загрузке экрана, идут ли они параллельно или друг за другом,
+// и сколько каждый занял. offsetMs — момент начала относительно навигации,
+// по нему видно перекрытие (параллельность) визуально даже без графика.
+let requestSeq = 0;
+
+function logTiming(id, method, path, phase, extra) {
+  const offsetMs = performance.now().toFixed(0);
+  console.log(`[api#${id}] ${phase} ${method} ${path} @${offsetMs}ms${extra ? " " + extra : ""}`);
+}
+
 function currentInitData() {
   return window.__DEV_INIT_DATA__ || window.Telegram?.WebApp?.initData || "";
 }
 
 async function request(method, path, body) {
+  const id = ++requestSeq;
+  const startedAt = performance.now();
+  logTiming(id, method, path, "→");
+
   const headers = { Authorization: `tma ${currentInitData()}` };
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    logTiming(id, method, path, "✗ network error", `(${(performance.now() - startedAt).toFixed(0)}ms)`);
+    throw e;
+  }
+
+  const serverMs = res.headers.get("X-Response-Time-Ms");
+  logTiming(
+    id,
     method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+    path,
+    "←",
+    `status=${res.status} total=${(performance.now() - startedAt).toFixed(0)}ms${serverMs ? ` server=${serverMs}ms` : ""}`
+  );
 
   if (!res.ok) {
     let detail = res.statusText;
@@ -31,9 +62,15 @@ async function request(method, path, body) {
 }
 
 async function requestBlob(path) {
+  const id = ++requestSeq;
+  const startedAt = performance.now();
+  logTiming(id, "GET", path, "→");
+
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { Authorization: `tma ${currentInitData()}` },
   });
+  logTiming(id, "GET", path, "←", `status=${res.status} total=${(performance.now() - startedAt).toFixed(0)}ms`);
+
   if (!res.ok) throw new Error(`${res.status}: не удалось скачать файл`);
   return res.blob();
 }

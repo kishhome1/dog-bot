@@ -121,8 +121,11 @@ function renderWalksList(container, walks) {
 
 // ---------- Загрузка экрана «Сегодня» ----------
 
-export async function loadToday() {
-  const walks = await api.getWalks({ days: 30 });
+// prefetchedWalks — необязательный уже начатый запрос (или готовый массив),
+// см. main.js: boot() шлёт /api/auth и /api/walks параллельно, а не
+// последовательно, раз getWalks не зависит от данных ответа /api/auth.
+export async function loadToday(prefetchedWalks) {
+  const walks = prefetchedWalks !== undefined ? await prefetchedWalks : await api.getWalks({ days: 30 });
   renderMoodCard(walks);
   if (walks.length > 0) {
     renderWalksList(document.getElementById("walks-list"), walks);

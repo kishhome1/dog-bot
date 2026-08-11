@@ -15,16 +15,27 @@ database.py — работа с базой данных (PostgreSQL) для Barb
 `db.*`, напрямую `psycopg2` не трогают.
 """
 
+import logging
 import os
 import secrets
+import time
 from contextlib import contextmanager
 
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 from dotenv import load_dotenv
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+logger = logging.getLogger(__name__)
+
+# Временное диагностическое логирование времени, которое каждый вызов держит
+# соединение из пула (checkout + запрос(ы) + commit) — включается флагом,
+# чтобы не шуметь в проде по умолчанию. См. README/CLAUDE.md, раздел про
+# производительность Mini App.
+DB_TIMING_LOG = os.getenv("DB_TIMING_LOG") == "1"
 
 # Пороги наград за длительность прогулки (минуты) — см. ТЗ, раздел 5.
 # 10 и 20 минут — нейтральные, в награды не попадают.
@@ -34,21 +45,53 @@ GOLD_MINUTES = (90, 120)
 
 PERIOD_INTERVALS = {"week": "7 days", "month": "30 days", "year": "365 days"}
 
+_pool = None
+
+
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    """Ленивая инициализация пула — так же, как раньше DATABASE_URL проверялся
+    только при первом реальном обращении к БД, а не при импорте модуля.
+
+    Пул нужен, потому что psycopg2.connect() — это отдельный TCP+TLS+auth
+    хендшейк к Postgres, а не просто открытие сокета. get_connection()
+    вызывается независимо из каждой db.*-функции, и один HTTP-запрос обычно
+    делает несколько таких вызовов подряд (например /api/auth — четыре:
+    get_member_by_tg_user_id, get_family, get_family_members,
+    get_reminder_times) — без пула это N полных хендшейков на один ответ."""
+    global _pool
+    if _pool is None:
+        if not DATABASE_URL:
+            raise RuntimeError(
+                "Не найден DATABASE_URL. На Railway он появляется автоматически при "
+                "подключённом плагине Postgres; локально добавьте его в .env."
+            )
+        _pool = psycopg2.pool.ThreadedConnectionPool(
+            1, 10, DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor
+        )
+    return _pool
+
 
 @contextmanager
 def get_connection():
-    """Открывает соединение с БД и гарантированно закрывает его после использования."""
-    if not DATABASE_URL:
-        raise RuntimeError(
-            "Не найден DATABASE_URL. На Railway он появляется автоматически при "
-            "подключённом плагине Postgres; локально добавьте его в .env."
-        )
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    """Берёт соединение из пула и гарантированно возвращает его обратно после
+    использования (не закрывает — иначе пул не давал бы никакого выигрыша)."""
+    started = time.monotonic()
+    p = _get_pool()
+    conn = p.getconn()
     try:
         yield conn
         conn.commit()
+    except Exception:
+        # без явного rollback аварийная транзакция осталась бы в соединении,
+        # и putconn() вернул бы в пул сломанное для следующего использования
+        # соединение — следующий же запрос на нём упал бы с "current
+        # transaction is aborted".
+        conn.rollback()
+        raise
     finally:
-        conn.close()
+        p.putconn(conn)
+        if DB_TIMING_LOG:
+            logger.info("db call: %.1f ms", (time.monotonic() - started) * 1000)
 
 
 def init_db():
@@ -135,6 +178,16 @@ def init_db():
         # добавлении записи — разные препараты одной категории (например, разные
         # марки от клещей) держат разный срок, поэтому это не константа по категории.
         cur.execute("ALTER TABLE treatments ADD COLUMN IF NOT EXISTS interval_days INTEGER NOT NULL DEFAULT 30")
+
+        # Индексы под реальные паттерны запросов — без них Postgres сканирует
+        # таблицы целиком по мере роста истории. family_members(tg_user_id)
+        # особенно важен: это get_member_by_tg_user_id, который выполняется
+        # на КАЖДЫЙ аутентифицированный запрос (см. api/auth.get_current_member).
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_family_members_tg_user_id ON family_members (tg_user_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_family_members_family_id ON family_members (family_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_walks_family_walked_at ON walks (family_id, walked_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_treatments_family_id ON treatments (family_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_reminder_times_family_id ON reminder_times (family_id)")
 
 
 # ---------- Families / members ----------
