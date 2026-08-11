@@ -50,6 +50,7 @@ def create_family(payload: CreateFamilyRequest, user: dict = Depends(get_telegra
         times=payload.times or [],
         tg_user_id=user["tg_user_id"],
         display_name=user["display_name"],
+        timezone=payload.timezone,
     )
     invite_url = f"https://t.me/{BOT_USERNAME}?start=invite_{result['invite_code']}"
     return CreateFamilyResponse(invite_url=invite_url, **result)

@@ -21,6 +21,7 @@ Postgres каждые несколько минут через reconcile_reminde
 import logging
 import os
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
@@ -41,6 +42,18 @@ logger = logging.getLogger(__name__)
 
 RECONCILE_INTERVAL = timedelta(minutes=5)
 DEFAULT_INTERVAL_HOURS = 8
+
+
+def resolve_timezone(tz_name: str) -> ZoneInfo:
+    """families.timezone — IANA-имя, которое фронт определяет сам через
+    Intl.DateTimeFormat(); API валидирует его при создании семьи, но на случай
+    испорченного/устаревшего значения в БД откатываемся на UTC, а не падаем —
+    неверная таймзона напоминания не должна ронять всю сверку расписания."""
+    try:
+        return ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        logger.warning("Неизвестная таймзона '%s', использую UTC", tz_name)
+        return ZoneInfo("UTC")
 
 
 # ---------- /start ----------
@@ -154,9 +167,16 @@ async def send_fixed_at(context: ContextTypes.DEFAULT_TYPE):
     schedule_once(context, send_nudge, 3600, f"nudge_fixed_{family_id}", family_id)
 
 
-def schedule_fixed_reminders(context: ContextTypes.DEFAULT_TYPE, family_id: int, time_of_day):
+def schedule_fixed_reminders(context: ContextTypes.DEFAULT_TYPE, family_id: int, time_of_day, tz_name: str):
+    """time_of_day — наивное время из reminder_times; интерпретируем его в локальной
+    таймзоне семьи (tz_name), а не в UTC/таймзоне сервера по умолчанию. PTB's
+    run_daily использует tzinfo, если он есть на переданном datetime.time — этого
+    достаточно, отдельно настраивать таймзону JobQueue не нужно."""
+    tz = resolve_timezone(tz_name)
     time_str = time_of_day.strftime("%H:%M")
-    before_time = (datetime.combine(datetime.today(), time_of_day) - timedelta(hours=1)).time()
+    at_time = time_of_day.replace(tzinfo=tz)
+    # .timetz() (не .time()!) — иначе tzinfo потеряется при вычитании timedelta.
+    before_time = (datetime.combine(datetime.today(), at_time) - timedelta(hours=1)).timetz()
 
     context.job_queue.run_daily(
         send_fixed_before,
@@ -166,7 +186,7 @@ def schedule_fixed_reminders(context: ContextTypes.DEFAULT_TYPE, family_id: int,
     )
     context.job_queue.run_daily(
         send_fixed_at,
-        time=time_of_day,
+        time=at_time,
         data=family_id,
         name=f"reminder_fixed_at_{family_id}_{time_str}",
     )
@@ -190,7 +210,7 @@ async def reconcile_reminders(context: ContextTypes.DEFAULT_TYPE):
             schedule_interval_reminder(context, family)
         else:
             for time_of_day in db.get_reminder_times(family["id"]):
-                schedule_fixed_reminders(context, family["id"], time_of_day)
+                schedule_fixed_reminders(context, family["id"], time_of_day, family["timezone"])
 
     if families:
         logger.info("Сверка напоминаний: %d семей", len(families))

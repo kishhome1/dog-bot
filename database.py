@@ -83,6 +83,11 @@ def init_db():
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
             )
         """)
+        # IANA-имя таймзоны (например 'Europe/Moscow') — нужно, чтобы 'fixed'-время
+        # напоминаний планировалось по локальному времени семьи, а не по UTC.
+        # Не было в исходной схеме ТЗ, поэтому добавляется отдельной колонкой,
+        # как и breed/age_years в старой SQLite-версии этого проекта.
+        cur.execute("ALTER TABLE families ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC'")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS family_members (
                 id SERIAL PRIMARY KEY,
@@ -140,18 +145,23 @@ def create_family(
     times: list,
     tg_user_id: int,
     display_name: str,
+    timezone: str = "UTC",
 ) -> dict:
     """Создаёт семью, времена напоминаний (для 'fixed') и первого участника — одной транзакцией.
     Возвращает {family_id, invite_code}. tg_chat_id участника = tg_user_id: Mini App открывается
     из личного чата с ботом, а для приватных чатов в Telegram chat_id всегда совпадает с user_id —
-    другого способа узнать личный chat_id у initData нет."""
+    другого способа узнать личный chat_id у initData нет.
+
+    timezone — IANA-имя (например 'Europe/Moscow'), определяется на фронте через
+    Intl.DateTimeFormat().resolvedOptions().timeZone и используется ботом, чтобы
+    планировать 'fixed'-напоминания по локальному времени семьи, а не по UTC."""
     invite_code = _generate_invite_code()
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            """INSERT INTO families (pet_name, invite_code, reminder_mode, interval_hours)
-               VALUES (%s, %s, %s, %s) RETURNING id, invite_code""",
-            (pet_name, invite_code, reminder_mode, interval_hours),
+            """INSERT INTO families (pet_name, invite_code, reminder_mode, interval_hours, timezone)
+               VALUES (%s, %s, %s, %s, %s) RETURNING id, invite_code""",
+            (pet_name, invite_code, reminder_mode, interval_hours, timezone),
         )
         family = cur.fetchone()
         family_id = family["id"]

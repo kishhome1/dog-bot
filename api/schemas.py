@@ -2,8 +2,13 @@
 
 from datetime import date, datetime, time
 from typing import List, Literal, Optional
+from zoneinfo import available_timezones
 
 from pydantic import BaseModel, model_validator
+
+# Считаем один раз при импорте — available_timezones() сканирует базу tzdata,
+# незачем делать это заново на каждый запрос.
+_KNOWN_TIMEZONES = available_timezones()
 
 
 class FamilyMemberOut(BaseModel):
@@ -26,6 +31,11 @@ class CreateFamilyRequest(BaseModel):
     reminder_mode: Literal["fixed", "interval"]
     interval_hours: Optional[float] = None
     times: Optional[List[time]] = None
+    # IANA-имя (напр. 'Europe/Moscow') — фронт берёт его автоматически через
+    # Intl.DateTimeFormat().resolvedOptions().timeZone, без отдельного шага
+    # онбординга. Нужно, чтобы 'fixed'-напоминания шли по локальному времени
+    # семьи, а не по UTC.
+    timezone: str = "UTC"
 
     @model_validator(mode="after")
     def check_mode_params(self):
@@ -38,6 +48,8 @@ class CreateFamilyRequest(BaseModel):
             raise ValueError("Для режима 'fixed' нужно хотя бы одно время")
         if self.reminder_mode == "interval" and not self.interval_hours:
             raise ValueError("Для режима 'interval' нужно указать interval_hours")
+        if self.timezone not in _KNOWN_TIMEZONES:
+            raise ValueError(f"Неизвестная таймзона: {self.timezone}")
         return self
 
 

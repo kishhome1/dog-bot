@@ -15,6 +15,17 @@ function showStep(id) {
   }
 }
 
+// Автоопределение таймзоны устройства — без отдельного шага онбординга.
+// Нужно, чтобы 'fixed'-напоминания бот планировал по местному времени семьи,
+// а не по UTC. Поддерживается всеми движками, на которых открывается Mini App.
+function detectTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch (e) {
+    return "UTC";
+  }
+}
+
 function renderTimeList() {
   const list = document.getElementById("time-list");
   list.innerHTML = "";
@@ -102,7 +113,7 @@ export function initOnboarding() {
     const btn = document.getElementById("btn-step-params-next");
     btn.disabled = true;
     try {
-      const payload = { pet_name: petName, reminder_mode: mode };
+      const payload = { pet_name: petName, reminder_mode: mode, timezone: detectTimezone() };
       if (mode === "fixed") {
         payload.times = times;
       } else {
