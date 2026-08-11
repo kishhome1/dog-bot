@@ -12,7 +12,9 @@ A Telegram bot (in Russian) that reminds a household to walk the dog, tracks who
 # install deps (Python 3.10+)
 pip install -r requirements.txt
 
-# configure token: copy .env.example to .env and put the BotFather token in BOT_TOKEN
+# configure: copy .env.example to .env, put the BotFather token in BOT_TOKEN,
+# and point DATABASE_URL at a Postgres instance (Railway sets DATABASE_URL
+# automatically when a Postgres plugin is attached)
 cp .env.example .env
 
 # run
@@ -24,7 +26,7 @@ There is no test suite, linter, or build step in this repo.
 ## Architecture
 
 - `bot.py` — all Telegram handlers, scheduling logic, and the `main()` entry point.
-- `database.py` — all SQLite access, wrapped behind plain functions (`add_walk`, `get_walks_by_weekday`, `set_interval`, etc.). `bot.py` never touches `sqlite3` directly; it always goes through `db.*`. Uses a single `dog_walks.db` file (path hardcoded as `DB_PATH`), opened/closed per call via the `get_connection()` context manager (commit-on-success, no persistent connection).
+- `database.py` — all PostgreSQL access (via `psycopg2`), wrapped behind plain functions (`add_walk`, `get_walks_by_weekday`, `set_interval`, etc.). `bot.py` never touches `psycopg2` directly; it always goes through `db.*`. Connection string comes from the `DATABASE_URL` env var, opened/closed per call via the `get_connection()` context manager (commit-on-success, no persistent connection/pool). Rows are `RealDictRow`s (dict-like, same `row["column"]` access `bot.py` used with `sqlite3.Row`). `chat_id`/`user_id` are `BIGINT` — Telegram chat ids can exceed 32-bit range.
 
 ### Reminder scheduling model
 
@@ -46,7 +48,7 @@ Notes are attached to a walk via Telegram's reply mechanism rather than a statef
 
 ### Database migrations
 
-`init_db()` creates tables if missing, then adds new columns to `chat_settings` (e.g. `breed`, `age_years`) via `ALTER TABLE`, swallowing `OperationalError` if the column already exists. There's no migration framework — new columns follow this same try/except-add pattern directly in `init_db()`.
+`init_db()` creates tables if missing, then adds new columns to `chat_settings`/`walks` (e.g. `breed`, `age_years`) via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` — Postgres handles the idempotency natively, so there's no try/except-around-`ALTER TABLE` dance (that was a SQLite-only workaround from before the Postgres migration). There's still no migration framework; new columns just follow this same pattern directly in `init_db()`.
 
 ## Language
 
