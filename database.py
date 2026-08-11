@@ -66,14 +66,6 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # колонка уже существует — всё в порядке
 
-        # Миграция: геолокация чата для погодных предупреждений.
-        for column, coltype in [("city", "TEXT"), ("latitude", "REAL"), ("longitude", "REAL")]:
-            try:
-                conn.execute(f"ALTER TABLE chat_settings ADD COLUMN {column} {coltype}")
-            except sqlite3.OperationalError:
-                pass  # колонка уже существует — всё в порядке
-
-
 def get_or_create_settings(chat_id: int) -> sqlite3.Row:
     """Возвращает настройки чата, создавая запись по умолчанию если её ещё нет."""
     with get_connection() as conn:
@@ -122,15 +114,6 @@ def set_pet_name(chat_id: int, name: str):
         conn.execute(
             "UPDATE chat_settings SET pet_name = ? WHERE chat_id = ?",
             (name, chat_id),
-        )
-
-
-def set_location(chat_id: int, city: str, latitude: float, longitude: float):
-    """Сохраняет координаты чата — нужны для погодных предупреждений перед прогулкой."""
-    with get_connection() as conn:
-        conn.execute(
-            "UPDATE chat_settings SET city = ?, latitude = ?, longitude = ? WHERE chat_id = ?",
-            (city, latitude, longitude, chat_id),
         )
 
 

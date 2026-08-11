@@ -26,7 +26,6 @@ import os
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-import httpx
 import matplotlib
 matplotlib.use("Agg")  # без GUI — бот рендерит графики на сервере без дисплея
 import matplotlib.pyplot as plt
@@ -66,10 +65,6 @@ SMALL_BREED_KEYWORDS = [
     "мопс", "папильон", "болонка", "карликов", "мини",
     "chihuahua", "yorkshire", "pomeranian", "dachshund", "pug",
 ]
-
-# Коды погоды Open-Meteo (стандарт WMO), которые означают дождь или грозу.
-# https://open-meteo.com/en/docs — таблица WMO Weather interpretation codes
-RAIN_WEATHER_CODES = {51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99}
 
 WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
@@ -124,73 +119,6 @@ def parse_next_walk_input(text: str):
             return hours * 3600
     except ValueError:
         pass
-
-    return None
-
-
-async def geocode_city(city_name: str):
-    """Ищет город через геокодер Open-Meteo (бесплатный, без ключа).
-    Возвращает (широта, долгота, найденное название) либо None если не нашёл."""
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(
-                "https://geocoding-api.open-meteo.com/v1/search",
-                params={"name": city_name, "count": 1, "language": "ru", "format": "json"},
-            )
-            response.raise_for_status()
-            data = response.json()
-    except httpx.HTTPError as e:
-        logger.warning("Не удалось найти город '%s': %s", city_name, e)
-        return None
-
-    results = data.get("results")
-    if not results:
-        return None
-
-    result = results[0]
-    return result["latitude"], result["longitude"], result.get("name", city_name)
-
-
-async def get_rain_warning(latitude: float, longitude: float):
-    """Смотрит почасовой прогноз Open-Meteo на ближайшие 3 часа для заданных координат.
-    Если ожидается дождь/гроза (по коду погоды WMO или высокой вероятности осадков) —
-    возвращает текст предупреждения, иначе None. Молчит при сбое запроса — погода
-    не должна ломать основной сценарий напоминания."""
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(
-                "https://api.open-meteo.com/v1/forecast",
-                params={
-                    "latitude": latitude,
-                    "longitude": longitude,
-                    "hourly": "precipitation_probability,weathercode",
-                    "forecast_days": 1,
-                    "timezone": "auto",
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-    except httpx.HTTPError as e:
-        logger.warning("Не удалось получить прогноз погоды: %s", e)
-        return None
-
-    hourly = data.get("hourly", {})
-    times = hourly.get("time", [])
-    probabilities = hourly.get("precipitation_probability", [])
-    codes = hourly.get("weathercode", [])
-
-    now = datetime.now()
-    for i, t in enumerate(times):
-        forecast_time = datetime.fromisoformat(t)
-        if forecast_time < now - timedelta(minutes=30):
-            continue
-        if forecast_time > now + timedelta(hours=3):
-            break
-
-        code = codes[i] if i < len(codes) else None
-        probability = probabilities[i] if i < len(probabilities) else 0
-        if code in RAIN_WEATHER_CODES or probability >= 60:
-            return "☔ Ожидается дождь — возьмите зонт/дождевик для собаки!"
 
     return None
 
@@ -292,7 +220,6 @@ async def ask_next_walk(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"/history — последние прогулки\n"
         f"/export — история в CSV\n"
         f"/setpet <имя> — быстро сменить кличку\n"
-        f"/setlocation <город> — включить предупреждение о дожде перед прогулкой\n"
         f"/start — пройти настройку заново\n\n"
         f"Первое напоминание придёт в указанное время!"
     )
@@ -313,10 +240,6 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE):
     pet = settings["pet_name"]
 
     text = f"🐾 Время выгулять {pet}!"
-    if settings["latitude"] is not None and settings["longitude"] is not None:
-        warning = await get_rain_warning(settings["latitude"], settings["longitude"])
-        if warning:
-            text += f"\n\n{warning}"
 
     keyboard = InlineKeyboardMarkup(
         [
@@ -551,31 +474,6 @@ async def setpet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🐕 Теперь питомца зовут {name}!")
 
 
-async def setlocation_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    if not context.args:
-        await update.message.reply_text(
-            "Укажите город, например: /setlocation Москва\n\n"
-            "Это нужно, чтобы бот мог предупреждать о дожде перед прогулкой."
-        )
-        return
-
-    city_name = " ".join(context.args)
-    result = await geocode_city(city_name)
-    if result is None:
-        await update.message.reply_text(
-            f"Не нашёл город «{city_name}». Попробуйте написать иначе, например на английском."
-        )
-        return
-
-    latitude, longitude, resolved_name = result
-    db.set_location(chat_id, resolved_name, latitude, longitude)
-    await update.message.reply_text(
-        f"📍 Место сохранено: {resolved_name}\n"
-        f"Теперь буду проверять прогноз дождя перед напоминанием о прогулке ☔"
-    )
-
-
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "/start — пройти (или перепройти) настройку профиля питомца\n"
@@ -583,7 +481,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/history — последние 10 прогулок\n"
         "/setinterval <часы> — изменить интервал напоминаний вручную\n"
         "/setpet <имя> — быстро сменить кличку\n"
-        "/setlocation <город> — включить предупреждение о дожде перед прогулкой\n"
         "/export — выгрузить историю в CSV"
     )
     await update.message.reply_text(text)
@@ -648,7 +545,6 @@ def main():
     app.add_handler(CommandHandler("export", export_command))
     app.add_handler(CommandHandler("setinterval", setinterval_command))
     app.add_handler(CommandHandler("setpet", setpet_command))
-    app.add_handler(CommandHandler("setlocation", setlocation_command))
 
     app.add_handler(CallbackQueryHandler(button_callback, pattern="^walked(_together)?$"))
     app.add_handler(CallbackQueryHandler(note_button_callback, pattern="^note_"))
