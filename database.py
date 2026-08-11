@@ -66,7 +66,24 @@ def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
                 "подключённом плагине Postgres; локально добавьте его в .env."
             )
         _pool = psycopg2.pool.ThreadedConnectionPool(
-            1, 10, DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor
+            1,
+            10,
+            DATABASE_URL,
+            cursor_factory=psycopg2.extras.RealDictCursor,
+            # Без этого возможен ровно тот баг, который уже ловили в проде:
+            # запрос зависает НАВСЕГДА (не падает ошибкой, не отвечает) —
+            # если единственное «тёплое» соединение из пула (minconn=1)
+            # успело протухнуть на сети между api-сервисом и Postgres (NAT/
+            # прокси на managed-платформах вроде Railway тихо рвут долго
+            # простаивающие TCP-соединения, не уведомляя клиента), psycopg2
+            # без keepalives узнаёт об этом только через дефолтный OS-таймаут
+            # ретрансмиссии — это может быть много МИНУТ, а не секунд.
+            # connect_timeout — на случай, если сам хендшейк подвиснет.
+            connect_timeout=10,
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=3,
         )
     return _pool
 

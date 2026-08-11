@@ -3,6 +3,16 @@
 
 const API_BASE = "/api";
 
+// fetch() сам по себе не имеет таймаута вообще — без signal/AbortController
+// браузер будет ждать ответ бесконечно, если сервер просто не отвечает (а не
+// возвращает ошибку). Без этого дольше REQUEST_TIMEOUT_MS зависший запрос
+// оставлял бы Mini App вечно на экране загрузки — ни успеха, ни ошибки.
+// Значение короткое (5с): холодный старт на Railway исключён (Sleep выключен,
+// платный тариф) — таймаут не обязан покрывать пробуждение контейнера,
+// только реальную сетевую/БД аномалию (см. keepalive в database.py). Здоровый
+// запрос при прогретом пуле соединений укладывается в десятки-сотни мс.
+const REQUEST_TIMEOUT_MS = 5000;
+
 // Временное диагностическое логирование запросов (см. CLAUDE.md, раздел про
 // производительность Mini App) — показывает в консоли, сколько запросов
 // уходит при загрузке экрана, идут ли они параллельно или друг за другом,
@@ -19,6 +29,21 @@ function currentInitData() {
   return window.__DEV_INIT_DATA__ || window.Telegram?.WebApp?.initData || "";
 }
 
+async function fetchWithTimeout(url, options) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (e) {
+    if (e.name === "AbortError") {
+      throw new Error(`Таймаут запроса (>${REQUEST_TIMEOUT_MS}ms): ${url}`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function request(method, path, body) {
   const id = ++requestSeq;
   const startedAt = performance.now();
@@ -29,13 +54,13 @@ async function request(method, path, body) {
 
   let res;
   try {
-    res = await fetch(`${API_BASE}${path}`, {
+    res = await fetchWithTimeout(`${API_BASE}${path}`, {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch (e) {
-    logTiming(id, method, path, "✗ network error", `(${(performance.now() - startedAt).toFixed(0)}ms)`);
+    logTiming(id, method, path, "✗ network error/timeout", `(${(performance.now() - startedAt).toFixed(0)}ms)`);
     throw e;
   }
 
@@ -66,9 +91,15 @@ async function requestBlob(path) {
   const startedAt = performance.now();
   logTiming(id, "GET", path, "→");
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { Authorization: `tma ${currentInitData()}` },
-  });
+  let res;
+  try {
+    res = await fetchWithTimeout(`${API_BASE}${path}`, {
+      headers: { Authorization: `tma ${currentInitData()}` },
+    });
+  } catch (e) {
+    logTiming(id, "GET", path, "✗ network error/timeout", `(${(performance.now() - startedAt).toFixed(0)}ms)`);
+    throw e;
+  }
   logTiming(id, "GET", path, "←", `status=${res.status} total=${(performance.now() - startedAt).toFixed(0)}ms`);
 
   if (!res.ok) throw new Error(`${res.status}: не удалось скачать файл`);
