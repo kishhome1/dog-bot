@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Barbos</title>
+<link rel="stylesheet" href="style.css" />
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+
+<div id="screen-loading" class="screen screen-center">
+  <div class="spinner"></div>
+</div>
+
+<div id="screen-outside-telegram" class="screen screen-center hidden">
+  <div class="empty-state">
+    <div class="empty-state-icon">🐾</div>
+    <p class="empty-state-title">Открой Barbos в Telegram</p>
+    <p class="empty-state-text">Это мини-приложение работает только внутри Telegram — открой его через бота.</p>
+  </div>
+</div>
+
+<!-- ---------- Онбординг ---------- -->
+<div id="screen-onboarding" class="screen hidden">
+  <div class="onboarding-step" id="step-name">
+    <h1 class="onboarding-title">Привет! 🐕</h1>
+    <p class="onboarding-subtitle">Как зовут собаку?</p>
+    <input id="input-pet-name" class="input" type="text" placeholder="Кличка" maxlength="40" />
+    <button id="btn-step-name-next" class="btn btn-primary btn-block" disabled>Дальше</button>
+  </div>
+
+  <div class="onboarding-step hidden" id="step-mode">
+    <h1 class="onboarding-title">Как напоминать?</h1>
+    <div class="mode-card" data-mode="fixed">
+      <div class="mode-card-title">По фиксированному времени</div>
+      <div class="mode-card-text">Например, каждый день в 7:00 и 19:00</div>
+    </div>
+    <div class="mode-card" data-mode="interval">
+      <div class="mode-card-title">Через N часов от последней прогулки</div>
+      <div class="mode-card-text">Например, каждые 8 часов, без привязки ко времени дня</div>
+    </div>
+  </div>
+
+  <div class="onboarding-step hidden" id="step-params">
+    <h1 class="onboarding-title" id="params-title">Настройка</h1>
+
+    <div id="params-fixed">
+      <div id="time-list" class="time-list"></div>
+      <button id="btn-add-time" class="btn btn-secondary btn-block">+ Добавить время</button>
+    </div>
+
+    <div id="params-interval" class="hidden">
+      <p class="onboarding-subtitle">Через сколько часов напоминать?</p>
+      <input id="input-interval-hours" class="input" type="number" min="1" max="48" step="0.5" value="8" />
+    </div>
+
+    <button id="btn-step-params-next" class="btn btn-primary btn-block">Дальше</button>
+  </div>
+
+  <div class="onboarding-step hidden" id="step-invite">
+    <h1 class="onboarding-title">Готово! 🎉</h1>
+    <p class="onboarding-subtitle">Пригласи второго человека — пришли ему эту ссылку</p>
+    <div class="invite-link-box">
+      <span id="invite-link-text"></span>
+    </div>
+    <button id="btn-share-invite" class="btn btn-secondary btn-block">Поделиться ссылкой</button>
+    <button id="btn-finish-onboarding" class="btn btn-primary btn-block">Начать пользоваться</button>
+  </div>
+</div>
+
+<!-- ---------- Экран «Сегодня» ---------- -->
+<div id="screen-today" class="screen hidden">
+  <div class="app-content">
+    <div id="mood-card" class="mood-card"></div>
+    <button id="btn-walked" class="btn btn-primary btn-block btn-walk">🚶 Выгулял</button>
+    <div id="walks-list" class="walks-list"></div>
+    <button id="btn-full-history" class="btn btn-text btn-block hidden">Вся история →</button>
+  </div>
+</div>
+
+<!-- ---------- История прогулок ---------- -->
+<div id="screen-walk-history" class="screen hidden">
+  <div class="app-content">
+    <div class="screen-header">
+      <button id="btn-back-from-history" class="btn-icon">←</button>
+      <div class="screen-header-title">Вся история</div>
+    </div>
+    <div id="walk-history-list" class="walks-list"></div>
+    <button id="btn-load-more-walks" class="btn btn-secondary btn-block hidden">Показать ещё</button>
+  </div>
+</div>
+
+<!-- ---------- Экран «Медицина» ---------- -->
+<div id="screen-medicine" class="screen hidden">
+  <div class="app-content">
+    <div id="treatment-categories" class="treatment-categories"></div>
+    <button id="btn-add-treatment" class="btn btn-primary btn-block">Добавить обработку</button>
+  </div>
+</div>
+
+<!-- ---------- История категории обработок ---------- -->
+<div id="screen-treatment-history" class="screen hidden">
+  <div class="app-content">
+    <div class="screen-header">
+      <button id="btn-back-from-treatment-history" class="btn-icon">←</button>
+      <div class="screen-header-title" id="treatment-history-title"></div>
+    </div>
+    <div id="treatment-status-card" class="treatment-status-card"></div>
+    <button id="btn-mark-treatment" class="btn btn-primary btn-block">Отметить обработку</button>
+    <div class="section-label">История</div>
+    <div id="treatment-history-list" class="treatment-history-list"></div>
+  </div>
+</div>
+
+<!-- ---------- Экран «Статистика» ---------- -->
+<div id="screen-stats" class="screen hidden">
+  <div class="app-content">
+    <div class="segmented" id="stats-period-switch">
+      <button class="segmented-item active" data-period="week">Неделя</button>
+      <button class="segmented-item" data-period="month">Месяц</button>
+      <button class="segmented-item" data-period="year">Год</button>
+    </div>
+    <div id="stats-body"></div>
+  </div>
+</div>
+
+<!-- ---------- Нижняя навигация ---------- -->
+<div id="bottom-nav" class="bottom-nav hidden">
+  <button class="nav-item active" data-screen="today">
+    <span class="nav-icon">🏠</span><span>Сегодня</span>
+  </button>
+  <button class="nav-item" data-screen="medicine">
+    <span class="nav-icon">💊</span><span>Медицина</span>
+  </button>
+  <button class="nav-item" data-screen="stats">
+    <span class="nav-icon">📊</span><span>Статистика</span>
+  </button>
+</div>
+
+<!-- ---------- Шторка: отметка прогулки ---------- -->
+<div id="sheet-backdrop" class="sheet-backdrop hidden"></div>
+<div id="sheet-walk" class="sheet hidden">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title" id="walk-sheet-title">Прогулка отмечена ✅</div>
+  <p class="sheet-subtitle">Сколько гуляли?</p>
+  <div class="duration-grid" id="duration-grid"></div>
+  <label class="checkbox-row" id="together-row">
+    <input type="checkbox" id="input-together" />
+    <span class="checkbox-box"></span>
+    <span>👥 Гуляли вместе</span>
+  </label>
+  <div class="note-field">
+    <span class="note-icon">📝</span>
+    <input id="input-walk-note" class="input" type="text" placeholder="Заметка (необязательно)" maxlength="500" />
+  </div>
+  <button id="btn-save-walk" class="btn btn-primary btn-block">Сохранить</button>
+  <button id="btn-skip-walk" class="btn btn-text btn-block">Пропустить</button>
+</div>
+
+<!-- ---------- Шторка: добавление обработки ---------- -->
+<div id="sheet-treatment" class="sheet hidden">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title">Добавить обработку</div>
+
+  <label class="field-label">Тип</label>
+  <select id="select-treatment-category" class="input">
+    <option value="ticks">Клещи</option>
+    <option value="deworming">Глистогонное</option>
+    <option value="vaccine">Прививка</option>
+    <option value="other">Другое</option>
+  </select>
+
+  <div id="treatment-custom-name-field" class="hidden">
+    <label class="field-label">Название</label>
+    <input id="input-treatment-custom-name" class="input" type="text" placeholder="напр. блохи, уши, витамины" maxlength="60" />
+  </div>
+
+  <label class="field-label">Дата</label>
+  <input id="input-treatment-date" class="input" type="date" />
+
+  <label class="field-label">Препарат (необязательно)</label>
+  <input id="input-treatment-drug" class="input" type="text" placeholder="напр. Bravecto" maxlength="80" />
+
+  <button id="btn-save-treatment" class="btn btn-primary btn-block">Сохранить</button>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
