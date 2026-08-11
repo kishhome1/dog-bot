@@ -11,7 +11,17 @@ import { initSettings, loadSettings } from "./settings.js";
 
 const MAIN_SCREENS = ["today", "walk-history", "medicine", "treatment-history", "stats", "settings"];
 const NAV_SCREENS = ["today", "medicine", "stats", "settings"];
-const ALL_SCREENS = ["loading", "outside-telegram", "onboarding", ...MAIN_SCREENS];
+const ALL_SCREENS = ["loading", "outside-telegram", "load-error", "onboarding", ...MAIN_SCREENS];
+
+// Если /api/auth не ответил с первой попытки — скорее всего api-сервис ещё
+// поднимается после простоя (холодный старт на Railway), а не что-то
+// сломано насовсем. Один автоматический повтор через паузу тихо проглатывает
+// большинство таких случаев, не заставляя пользователя тыкать «Повторить» сам.
+const AUTH_RETRY_DELAY_MS = 2500;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function showScreen(name) {
   for (const s of ALL_SCREENS) {
@@ -61,45 +71,37 @@ async function enterMainApp(auth, prefetchedWalks) {
   await loadToday(prefetchedWalks);
 }
 
-async function boot() {
-  initTelegramTheme();
+async function fetchAuthAndWalks() {
+  // getWalks не зависит от данных ответа /api/auth — сервер сам резолвит
+  // семью пользователя по initData независимо в каждом запросе — поэтому их
+  // можно слать параллельно, а не ждать auth и только потом начинать walks.
+  // Если семье ещё нужен онбординг, getWalks закономерно ответит 404 (нет
+  // family_id) — этот случай просто игнорируем, .catch(() => null).
+  return Promise.all([api.auth(), api.getWalks({ days: 30 }).catch(() => null)]);
+}
 
-  const tg = window.Telegram?.WebApp;
-  const devMode = new URLSearchParams(location.search).get("dev") === "1";
-  const hasInitData = !!(tg && tg.initData) || devMode;
-
-  if (!hasInitData) {
-    showScreen("outside-telegram");
-    return;
-  }
-
-  wireBottomNav();
-  wireSharedSheetBackdrop();
-  initOnboarding();
-  initToday();
-  initMedicine();
-  initStats();
-  initSettings();
-
-  window.addEventListener("onboarding-complete", () => {
-    enterMainApp().catch((e) => {
-      console.error(e);
-      alert("Не получилось загрузить приложение, попробуйте переоткрыть.");
-    });
-  });
-
+// Отдельно от boot(), чтобы кнопка «Повторить» могла звать это же самое, а не
+// весь boot() — иначе повторный boot() навешал бы все обработчики кликов
+// (wireBottomNav и т.д.) ещё раз поверх уже навешанных.
+async function loadMainScreen() {
   let auth, walks;
   try {
-    // getWalks не зависит от данных ответа /api/auth — сервер сам резолвит
-    // семью пользователя по initData независимо в каждом запросе — поэтому
-    // их можно слать параллельно, а не ждать auth и только потом начинать
-    // walks. Если семье ещё нужен онбординг, getWalks закономерно ответит
-    // 404 (нет family_id) — этот случай просто игнорируем, .catch(() => null).
-    [auth, walks] = await Promise.all([api.auth(), api.getWalks({ days: 30 }).catch(() => null)]);
-  } catch (e) {
-    console.error(e);
-    showScreen("outside-telegram");
-    return;
+    [auth, walks] = await fetchAuthAndWalks();
+  } catch (firstError) {
+    // Мы точно внутри Telegram (до этой функции не доходим без initData) —
+    // сюда попадает только сбой самого запроса: сеть, 5xx, или api-сервис
+    // ещё не проснулся после простоя на Railway. Один тихий повтор через
+    // паузу — именно то, что вручную делали пользователи, когда «чуть позже
+    // само загрузилось».
+    console.warn("Первая попытка /api/auth не удалась, пробую ещё раз через", AUTH_RETRY_DELAY_MS, "мс:", firstError);
+    await sleep(AUTH_RETRY_DELAY_MS);
+    try {
+      [auth, walks] = await fetchAuthAndWalks();
+    } catch (secondError) {
+      console.error(secondError);
+      showScreen("load-error");
+      return;
+    }
   }
 
   if (auth.needs_onboarding) {
@@ -119,6 +121,47 @@ async function boot() {
   }
 
   await enterMainApp(auth, walks ?? undefined);
+}
+
+function wireLoadErrorRetry() {
+  document.getElementById("btn-retry-load").addEventListener("click", () => {
+    showScreen("loading");
+    loadMainScreen().catch((e) => {
+      console.error(e);
+      showScreen("load-error");
+    });
+  });
+}
+
+async function boot() {
+  initTelegramTheme();
+
+  const tg = window.Telegram?.WebApp;
+  const devMode = new URLSearchParams(location.search).get("dev") === "1";
+  const hasInitData = !!(tg && tg.initData) || devMode;
+
+  if (!hasInitData) {
+    showScreen("outside-telegram");
+    return;
+  }
+
+  wireBottomNav();
+  wireSharedSheetBackdrop();
+  wireLoadErrorRetry();
+  initOnboarding();
+  initToday();
+  initMedicine();
+  initStats();
+  initSettings();
+
+  window.addEventListener("onboarding-complete", () => {
+    enterMainApp().catch((e) => {
+      console.error(e);
+      alert("Не получилось загрузить приложение, попробуйте переоткрыть.");
+    });
+  });
+
+  await loadMainScreen();
 }
 
 boot();

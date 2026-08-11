@@ -21,6 +21,18 @@
   </div>
 </div>
 
+<!-- Не путать с screen-outside-telegram: этот экран — когда мы точно открыты
+     внутри Telegram, но не дозвонились до сервера (например, api-сервис ещё
+     просыпается после простоя на Railway) — сообщение и кнопка тут другие. -->
+<div id="screen-load-error" class="screen screen-center hidden">
+  <div class="empty-state">
+    <div class="empty-state-icon">🐾</div>
+    <p class="empty-state-title">Не получилось загрузить Barbos</p>
+    <p class="empty-state-text">Сервер долго не отвечает — возможно, он ещё запускается. Попробуйте ещё раз через несколько секунд.</p>
+    <button id="btn-retry-load" class="btn btn-primary btn-block empty-state-action">Попробовать снова</button>
+  </div>
+</div>
+
 <!-- ---------- Онбординг ---------- -->
 <div id="screen-onboarding" class="screen hidden">
   <div class="onboarding-step" id="step-name">

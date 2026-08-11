@@ -51,6 +51,14 @@ async def log_request_timing(request: Request, call_next):
     return response
 
 
+@app.get("/health")
+def health():
+    """Не трогает БД специально — цель чисто в том, чтобы процесс ответил и
+    Railway (или внешний keep-warm пинг) не считал контейнер уснувшим.
+    Проверка живости самого Postgres/пула тут не нужна и не является целью."""
+    return {"status": "ok"}
+
+
 # Роутеры регистрируются раньше статики — иначе catch-all StaticFiles("/")
 # перехватывал бы запросы к /api/* раньше, чем до них доходит очередь.
 app.include_router(family.router)
