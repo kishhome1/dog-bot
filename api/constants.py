@@ -1,18 +1,11 @@
-"""api/constants.py — константы категорий обработок и порогов срочности.
+"""api/constants.py — метки категорий обработок и порог срочности статуса.
 
-Интервалы — не медицинская рекомендация, а разумные дефолты для прогресс-бара
-(ТЗ, раздел 3, примечания): клещи ~30 дней, глистогонное ~90, прививка ~365,
-для 'other' — дефолт 30.
+Срок действия (interval_days) больше не захардкожен по категории — пользователь
+указывает его сам при добавлении обработки (разные препараты одной категории
+держат разный срок), см. TreatmentCreate.interval_days в api/schemas.py.
 """
 
 from datetime import date
-
-TREATMENT_INTERVALS = {
-    "ticks": 30,
-    "deworming": 90,
-    "vaccine": 365,
-    "other": 30,
-}
 
 TREATMENT_LABELS = {
     "ticks": "Клещи",
@@ -24,10 +17,10 @@ TREATMENT_LABELS = {
 URGENCY_SOON_DAYS = 7
 
 
-def compute_status(category: str, treated_on: date) -> dict:
+def compute_status(interval_days: int, treated_on: date) -> dict:
     """Возвращает {days_remaining, status, progress_percent} — status: 'ok' | 'soon' | 'overdue'.
-    progress_percent — сколько от интервала уже прошло (для прогресс-бара карточки), 0..100."""
-    interval_days = TREATMENT_INTERVALS.get(category, TREATMENT_INTERVALS["other"])
+    progress_percent — сколько от указанного пользователем срока уже прошло
+    (для прогресс-бара карточки), 0..100."""
     elapsed_days = (date.today() - treated_on).days
     days_remaining = interval_days - elapsed_days
 
@@ -38,6 +31,6 @@ def compute_status(category: str, treated_on: date) -> dict:
     else:
         status = "ok"
 
-    progress_percent = max(0, min(100, round(100 * elapsed_days / interval_days)))
+    progress_percent = max(0, min(100, round(100 * elapsed_days / interval_days))) if interval_days > 0 else 100
 
     return {"days_remaining": days_remaining, "status": status, "progress_percent": progress_percent}

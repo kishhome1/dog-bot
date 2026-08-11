@@ -131,6 +131,10 @@ def init_db():
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
             )
         """)
+        # Срок действия конкретного препарата в днях, вводится пользователем при
+        # добавлении записи — разные препараты одной категории (например, разные
+        # марки от клещей) держат разный срок, поэтому это не константа по категории.
+        cur.execute("ALTER TABLE treatments ADD COLUMN IF NOT EXISTS interval_days INTEGER NOT NULL DEFAULT 30")
 
 
 # ---------- Families / members ----------
@@ -345,13 +349,20 @@ def get_last_walk(family_id: int):
 
 # ---------- Treatments ----------
 
-def add_treatment(family_id: int, category: str, treated_on, custom_name: str = None, drug_name: str = None) -> int:
+def add_treatment(
+    family_id: int,
+    category: str,
+    treated_on,
+    custom_name: str = None,
+    drug_name: str = None,
+    interval_days: int = 30,
+) -> int:
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            """INSERT INTO treatments (family_id, category, custom_name, treated_on, drug_name)
-               VALUES (%s, %s, %s, %s, %s) RETURNING id""",
-            (family_id, category, custom_name, treated_on, drug_name),
+            """INSERT INTO treatments (family_id, category, custom_name, treated_on, drug_name, interval_days)
+               VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+            (family_id, category, custom_name, treated_on, drug_name, interval_days),
         )
         return cur.fetchone()["id"]
 
@@ -388,7 +399,7 @@ def get_treatment_categories(family_id: int):
         cur = conn.cursor()
         cur.execute(
             """SELECT DISTINCT ON (category, custom_name)
-                      category, custom_name, treated_on, drug_name
+                      category, custom_name, treated_on, drug_name, interval_days
                FROM treatments
                WHERE family_id = %s
                ORDER BY category, custom_name, treated_on DESC""",

@@ -17,7 +17,7 @@ def list_categories(member: dict = Depends(get_current_member)):
     rows = db.get_treatment_categories(member["family_id"])
     result = []
     for row in rows:
-        status = compute_status(row["category"], row["treated_on"])
+        status = compute_status(row["interval_days"], row["treated_on"])
         label = row["custom_name"] if row["category"] == "other" else TREATMENT_LABELS[row["category"]]
         result.append(TreatmentCategoryOut(label=label, **status, **row))
     return result
@@ -40,6 +40,7 @@ def create_treatment(payload: TreatmentCreate, member: dict = Depends(get_curren
         treated_on=payload.treated_on,
         custom_name=payload.custom_name,
         drug_name=payload.drug_name,
+        interval_days=payload.interval_days,
     )
     return db.get_treatment(treatment_id, member["family_id"])
 

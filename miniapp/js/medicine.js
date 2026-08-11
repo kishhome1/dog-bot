@@ -6,6 +6,10 @@ import { daysRemainingLabel, escapeHtml, formatShortDate } from "./format.js";
 
 const CATEGORY_ICON = { ticks: "🕷️", deworming: "💊", vaccine: "💉", other: "➕" };
 
+// Дефолты только для поля формы (подсказка) — фактический срок действия
+// хранится за каждой записью отдельно, пользователь может его поменять.
+const DEFAULT_INTERVAL_DAYS = { ticks: 30, deworming: 90, vaccine: 365, other: 30 };
+
 let currentHistoryCategory = null;
 let currentHistoryCustomName = null;
 
@@ -98,6 +102,14 @@ function toggleCustomNameField() {
   document.getElementById("treatment-custom-name-field").classList.toggle("hidden", !isOther);
 }
 
+// Категорию можно менять только для НОВОЙ записи (select задизейблен при
+// редактировании — см. openTreatmentForm), поэтому здесь не нужно проверять
+// currentEditTreatmentId: обработчик просто не сработает в режиме правки.
+function applyDefaultIntervalForCategory() {
+  const category = document.getElementById("select-treatment-category").value;
+  document.getElementById("input-treatment-interval-days").value = DEFAULT_INTERVAL_DAYS[category] ?? 30;
+}
+
 function openTreatmentForm(existing) {
   currentEditTreatmentId = existing ? existing.id : null;
 
@@ -109,6 +121,8 @@ function openTreatmentForm(existing) {
   document.getElementById("input-treatment-custom-name").value = existing?.custom_name || currentHistoryCustomName || "";
   document.getElementById("input-treatment-date").value = (existing?.treated_on || new Date().toISOString().slice(0, 10)).slice(0, 10);
   document.getElementById("input-treatment-drug").value = existing?.drug_name || "";
+  document.getElementById("input-treatment-interval-days").value =
+    existing?.interval_days ?? DEFAULT_INTERVAL_DAYS[categorySelect.value] ?? 30;
 
   document.getElementById("sheet-backdrop").classList.remove("hidden");
   document.getElementById("sheet-treatment").classList.remove("hidden");
@@ -126,6 +140,7 @@ async function saveTreatment() {
   const customName = document.getElementById("input-treatment-custom-name").value.trim();
   const treatedOn = document.getElementById("input-treatment-date").value;
   const drugName = document.getElementById("input-treatment-drug").value.trim();
+  const intervalDays = Number(document.getElementById("input-treatment-interval-days").value) || 30;
 
   if (category === "other" && !customName) {
     alert("Укажите название для категории «Другое»");
@@ -141,6 +156,7 @@ async function saveTreatment() {
       await api.updateTreatment(currentEditTreatmentId, {
         treated_on: treatedOn,
         drug_name: drugName || null,
+        interval_days: intervalDays,
         ...(category === "other" ? { custom_name: customName } : {}),
       });
     } else {
@@ -149,6 +165,7 @@ async function saveTreatment() {
         custom_name: category === "other" ? customName : null,
         treated_on: treatedOn,
         drug_name: drugName || null,
+        interval_days: intervalDays,
       });
     }
     closeTreatmentForm();
@@ -176,7 +193,10 @@ export function initMedicine() {
     openTreatmentForm(null);
   });
   document.getElementById("btn-mark-treatment").addEventListener("click", () => openTreatmentForm(null));
-  document.getElementById("select-treatment-category").addEventListener("change", toggleCustomNameField);
+  document.getElementById("select-treatment-category").addEventListener("change", () => {
+    toggleCustomNameField();
+    applyDefaultIntervalForCategory();
+  });
   document.getElementById("btn-save-treatment").addEventListener("click", saveTreatment);
 
   document.getElementById("btn-back-from-treatment-history").addEventListener("click", () => {

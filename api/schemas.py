@@ -4,7 +4,7 @@ from datetime import date, datetime, time
 from typing import List, Literal, Optional
 from zoneinfo import available_timezones
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 # Считаем один раз при импорте — available_timezones() сканирует базу tzdata,
 # незачем делать это заново на каждый запрос.
@@ -118,6 +118,10 @@ class TreatmentCreate(BaseModel):
     custom_name: Optional[str] = None
     treated_on: date
     drug_name: Optional[str] = None
+    # Срок действия конкретного препарата в днях — вводится пользователем, а не
+    # берётся из захардкоженного интервала по категории (разные препараты одной
+    # категории держат разный срок). 30 — просто разумный дефолт для поля.
+    interval_days: int = Field(default=30, ge=1, le=3650)
 
     @model_validator(mode="after")
     def check_custom_name(self):
@@ -130,6 +134,7 @@ class TreatmentUpdate(BaseModel):
     treated_on: Optional[date] = None
     drug_name: Optional[str] = None
     custom_name: Optional[str] = None
+    interval_days: Optional[int] = Field(default=None, ge=1, le=3650)
 
 
 class TreatmentOut(BaseModel):
@@ -138,6 +143,7 @@ class TreatmentOut(BaseModel):
     custom_name: Optional[str] = None
     treated_on: date
     drug_name: Optional[str] = None
+    interval_days: int
 
 
 class TreatmentCategoryOut(BaseModel):
@@ -146,6 +152,7 @@ class TreatmentCategoryOut(BaseModel):
     label: str
     treated_on: date
     drug_name: Optional[str] = None
+    interval_days: int
     days_remaining: int
     status: Literal["ok", "soon", "overdue"]
     progress_percent: int
