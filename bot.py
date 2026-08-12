@@ -126,6 +126,24 @@ async def send_nudge(context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- Режим 'interval' ----------
 
+async def send_interval_before(context: ContextTypes.DEFAULT_TYPE):
+    family_id = context.job.data
+    family = db.get_family(family_id)
+    if family is None:
+        return
+
+    last_walk = db.get_last_walk(family_id)
+    interval_hours = family["interval_hours"] or DEFAULT_INTERVAL_HOURS
+    if last_walk:
+        elapsed = datetime.now(timezone.utc) - last_walk["walked_at"]
+        if elapsed < timedelta(hours=interval_hours) - timedelta(hours=1, minutes=1):
+            # прогулку уже записали позже, чем предполагал этот job (target уехал
+            # вперёд) — следующий тик reconcile_reminders пересчитает время сам
+            return
+
+    await send_to_family(context, family_id, f"🐾 Через час пора выгулять {family['pet_name']}!")
+
+
 async def send_interval_reminder(context: ContextTypes.DEFAULT_TYPE):
     family_id = context.job.data
     family = db.get_family(family_id)
@@ -142,33 +160,52 @@ async def send_interval_reminder(context: ContextTypes.DEFAULT_TYPE):
             return
 
     await send_to_family(context, family_id, f"🐾 Время выгулять {family['pet_name']}!")
-    schedule_once(context, send_nudge, 3600, f"nudge_interval_{family_id}", family_id)
 
 
-def schedule_interval_reminder(context: ContextTypes.DEFAULT_TYPE, family: dict):
+def schedule_interval_reminders(context: ContextTypes.DEFAULT_TYPE, family: dict):
     """Вызывается на каждом тике reconcile_reminders (раз в 5 минут) для каждой
-    interval-семьи. Если прогулку уже просрочили (delay <= 0), НЕЛЬЗЯ просто
-    планировать job на "почти сейчас" безусловно — иначе на следующем тике
-    reconcile снова увидит ту же просрочку и заново пошлёт напоминание, и так
-    каждые 5 минут, пока прогулку не отметят (это и был баг: спам раз в 5 минут
-    вместо одного напоминания + одного nudge через час).
+    interval-семьи. Ровно 3 напоминания на один "цикл" (target = последняя
+    прогулка + interval_hours), как и в режиме fixed: за час до target, в
+    target, и nudge через час после target — а не бесконечная эскалация.
 
-    Раз в 5 минут просто перепланировать нечего — used как признак "уже
-    отправляли и ждём час" служит сам nudge_interval_{family_id}: пока он
-    существует (ещё не прошёл час), новых напоминаний не шлём вообще."""
+    Раньше здесь планировался только один run_once на target, и когда target
+    оказывался в прошлом (прогулку просрочили), job пересоздавался заново на
+    каждом тике reconcile — то есть слался снова и снова, пока не пометили
+    существование nudge-джобы как "уже отправляли, ждём час" (см. историю
+    правок). Но это лечило только спам раз в 5 минут, а не сам факт повторной
+    отправки: как только nudge срабатывал и исчезал, следующий тик reconcile
+    видел ту же просрочку и запускал всё заново — на выходе напоминание
+    прилетало каждый час, пока собаку не выгуляют, а не 3 раза максимум.
+
+    Теперь вместо пересоздания "on repeat" на каждом тике мы один раз ставим
+    все 3 джобы на их абсолютное время (target-1ч, target, target+1ч) и,
+    как только текущее время проходит nudge_at (target+1ч), просто ничего не
+    планируем — цикл закрыт до следующей прогулки, которая сама сдвинет
+    target вперёд. schedule_once идемпотентен (отменяет старую джобу по имени
+    перед созданием новой), так что многократный вызов с тем же target ничего
+    не дублирует."""
     family_id = family["id"]
     last_walk = db.get_last_walk(family_id)
     interval_hours = family["interval_hours"] or DEFAULT_INTERVAL_HOURS
     base_time = last_walk["walked_at"] if last_walk else family["created_at"]
     target = base_time + timedelta(hours=interval_hours)
-    delay = (target - datetime.now(timezone.utc)).total_seconds()
+    now = datetime.now(timezone.utc)
+    nudge_at = target + timedelta(hours=1)
 
-    if delay <= 0:
-        if context.job_queue.get_jobs_by_name(f"nudge_interval_{family_id}"):
-            return
-        delay = 1
+    if now >= nudge_at:
+        # цикл для этой прогулки полностью закрыт (все 3 напоминания либо
+        # отправлены, либо их время прошло) — молчим до новой прогулки
+        return
 
-    schedule_once(context, send_interval_reminder, delay, f"reminder_interval_{family_id}", family_id)
+    before_delay = (target - timedelta(hours=1) - now).total_seconds()
+    if before_delay > 0:
+        schedule_once(context, send_interval_before, before_delay, f"reminder_interval_before_{family_id}", family_id)
+
+    at_delay = (target - now).total_seconds()
+    if at_delay > 0:
+        schedule_once(context, send_interval_reminder, at_delay, f"reminder_interval_at_{family_id}", family_id)
+
+    schedule_once(context, send_nudge, (nudge_at - now).total_seconds(), f"nudge_interval_{family_id}", family_id)
 
 
 # ---------- Режим 'fixed' ----------
@@ -229,7 +266,7 @@ async def reconcile_reminders(context: ContextTypes.DEFAULT_TYPE):
     families = db.get_all_families()
     for family in families:
         if family["reminder_mode"] == "interval":
-            schedule_interval_reminder(context, family)
+            schedule_interval_reminders(context, family)
         else:
             for time_of_day in db.get_reminder_times(family["id"]):
                 schedule_fixed_reminders(context, family["id"], time_of_day, family["timezone"])
